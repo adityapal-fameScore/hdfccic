@@ -192,8 +192,11 @@ def api_multi_param_filter():
         case_list = metrics.get(param, [])
         case_map = {}
         for c in case_list:
+            if not isinstance(c, dict): continue
             # Use tuple key compatible with raw_record_map
-            key = (str(c['old_los']), str(c['new_los']))
+            old_val = str(c.get('old_los', ''))
+            new_val = str(c.get('new_los', ''))
+            key = (old_val, new_val)
             case_map[key] = c
         param_case_maps[param] = case_map
 
@@ -737,12 +740,25 @@ def _get_comparison(old_los_str, new_los_str):
                          # Categorize HIGH criticality ones
                          if DEVIATION_CRITICALITY.get(dev_name) == 'HIGH':
                              if final_cat in ['Consumer Bureau', 'Commercial Bureau']:
-                                 categorized_deviations.setdefault('Critical', []).append(dev_name)
-                                 categorized_deviations.setdefault(final_cat, []).append(dev_name)
+                                 clist = categorized_deviations.get('Critical', [])
+                                 if isinstance(clist, list): 
+                                     clist.append(dev_name)
+                                     categorized_deviations['Critical'] = clist
+                                 
+                                 flist = categorized_deviations.get(final_cat, [])
+                                 if isinstance(flist, list):
+                                     flist.append(dev_name)
+                                     categorized_deviations[final_cat] = flist
                              elif final_cat == 'Bank Banking':
-                                 categorized_deviations.setdefault('Bank Banking', []).append(dev_name)
+                                 blist = categorized_deviations.get('Bank Banking', [])
+                                 if isinstance(blist, list):
+                                     blist.append(dev_name)
+                                     categorized_deviations['Bank Banking'] = blist
                              else:
-                                 categorized_deviations.setdefault('Other', []).append(dev_name)
+                                 olist = categorized_deviations.get('Other', [])
+                                 if isinstance(olist, list):
+                                     olist.append(dev_name)
+                                     categorized_deviations['Other'] = olist
 
         # Collect ALL deviations with criticality for the full table display
         all_deviations_table = []
