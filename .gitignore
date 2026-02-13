@@ -1,0 +1,26 @@
+# Python stuff
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Large Data Sources (Keep pre-computed JSONs, ignore raw data)
+*.xlsx
+*.csv
+*.pkl
+*.zip
+!dashboard_records.json
+!comparison_lookup.json
+!portfolio_metrics.json
+!portfolio_cache_metadata.json
+
+# Tool logs
+.gemini/
+.agent/
+*.webp
+*.png
+*.txt
+
+# OS stuff
+.DS_Store
