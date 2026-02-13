@@ -21,6 +21,7 @@ venv/
 *.webp
 *.png
 *.txt
+!requirements.txt
 
 # OS stuff
 .DS_Store
