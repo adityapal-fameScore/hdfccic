@@ -1923,13 +1923,12 @@ HTML_TEMPLATE = """
 def index():
     return HTML_TEMPLATE
 
+# Load pre-computed data (loads once at startup)
+load_precomputed_data()
+
 if __name__ == '__main__':
     print("\n" + "=" * 80)
     print("STARTING FAST SERVER")
     print("=" * 80)
-
-    # Load pre-computed data (instant)
-    load_precomputed_data()
-
     print("\nOpen http://localhost:5005 in your browser")
     app.run(debug=True, host='0.0.0.0', port=5005)
