@@ -1148,6 +1148,9 @@ HTML_TEMPLATE = """
                             </div>
                         </div>
                     </div>
+                    <div class="portfolio-filter-group" style="display:flex; align-items:flex-end;">
+                        <button class="btn btn-secondary" onclick="clearAllPortfolioFilters()" type="button" style="white-space:nowrap; height:38px; margin-top:auto;">&#x2715; Clear Filters</button>
+                    </div>
                 </div>
 
                 <div id="combinedResults" class="combined-results" style="display:none;">
@@ -1899,6 +1902,21 @@ HTML_TEMPLATE = """
             } else {
                 label.innerHTML = `${checkboxes.length} selected<span class="multi-select-count">${checkboxes.length}</span>`;
             }
+        }
+
+        function clearAllPortfolioFilters() {
+            document.getElementById('portfolioOldStatusFilter').value = '';
+            document.getElementById('portfolioStatusFilter').value = '';
+            document.getElementById('portfolioProgramFilter').value = '';
+            // Uncheck all multi-select checkboxes
+            document.querySelectorAll('#multiSelectItems input[type="checkbox"]').forEach(cb => cb.checked = false);
+            document.getElementById('multiSelectLabel').textContent = 'Select Parameters...';
+            document.getElementById('multiSelectBtn').classList.remove('open');
+            document.getElementById('multiSelectDropdown').classList.remove('open');
+            // Hide AND results
+            document.getElementById('combinedResults').style.display = 'none';
+            // Reload with no filters
+            loadPortfolioAnalysis();
         }
 
         function getSelectedParams() {
