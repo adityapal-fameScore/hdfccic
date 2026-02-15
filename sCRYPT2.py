@@ -108,15 +108,17 @@ def api_dashboard():
 
 @app.route('/api/portfolio-analysis')
 def api_portfolio_analysis():
+    old_status_val = request.args.get('old_status', '').strip().lower()
     status_filter = request.args.get('status', '').strip().lower()
     program_filter = request.args.get('program', '').strip().lower()
 
     # Always filter and calculate live for consistency
     filtered_records = []
     for r in dashboard_data:
+        old_status_match = not old_status_val or str(r.get('old_status', '')).lower() == old_status_val
         status_match = not status_filter or str(r.get('new_status', '')).lower() == status_filter
         program_match = not program_filter or str(r.get('new_program', '')).lower() == program_filter
-        if status_match and program_match:
+        if old_status_match and status_match and program_match:
             filtered_records.append(r)
 
     # Return live calculation
@@ -126,6 +128,7 @@ def api_portfolio_analysis():
 @app.route('/api/drill-down')
 def api_drill_down():
     metric = request.args.get('metric')
+    old_status_val = request.args.get('old_status', '').strip().lower()
     status_filter = request.args.get('status', '').strip().lower()
     program_filter = request.args.get('program', '').strip().lower()
     industry_filter = request.args.get('industry', '').strip()
@@ -139,9 +142,10 @@ def api_drill_down():
     target_records = dashboard_data
     
     # Apply filters if present
-    if status_filter or program_filter or industry_filter or state_filter:
+    if old_status_val or status_filter or program_filter or industry_filter or state_filter:
         filtered_input = []
         for r in dashboard_data:
+            if old_status_val and str(r.get('old_status', '')).lower() != old_status_val: continue
             if status_filter and str(r.get('new_status', '')).lower() != status_filter: continue
             if program_filter and str(r.get('new_program', '')).lower() != program_filter: continue
             if industry_filter and r.get('industry') != industry_filter: continue
@@ -161,6 +165,7 @@ def api_drill_down():
 def api_multi_param_filter():
     """Multi-parameter AND filter — returns cases matching ALL selected parameters."""
     params_str = request.args.get('params', '').strip()
+    old_status_val = request.args.get('old_status', '').strip().lower()
     status_filter = request.args.get('status', '').strip().lower()
     program_filter = request.args.get('program', '').strip().lower()
 
@@ -172,6 +177,7 @@ def api_multi_param_filter():
     # Filter records by status/program first
     filtered_records = []
     for r in dashboard_data:
+        if old_status_val and str(r.get('old_status', '')).lower() != old_status_val: continue
         if status_filter and str(r.get('new_status', '')).lower() != status_filter: continue
         if program_filter and str(r.get('new_program', '')).lower() != program_filter: continue
         filtered_records.append(r)
@@ -205,11 +211,9 @@ def api_multi_param_filter():
     if param_case_maps:
         keys_list = [set(m.keys()) for m in param_case_maps.values()]
         if len(keys_list) > 0:
-            first_set = keys_list[0]
-            if isinstance(first_set, set):
-                intersection_keys = first_set.copy()
-                for i in range(1, len(keys_list)):
-                    intersection_keys = intersection_keys & keys_list[i]
+            intersection_keys = keys_list[0].copy()
+            for i in range(1, len(keys_list)):
+                intersection_keys = intersection_keys & keys_list[i]
 
     # Retrieve ORIGINAL records for the intersection
     # intersection_keys contains (old_los, new_los) tuples
@@ -221,22 +225,11 @@ def api_multi_param_filter():
     # Re-calculate FULL metrics for the AND-filtered subset using RAW records
     filtered_metrics = _calculate_live_metrics(result_raw_records)
     
-    # Also get the processed cases for the list view (from the new metrics)
-    # We can just use the count from the new metrics, or extract unique cases.
-    # But wait, the frontend expects 'cases' list.
-    # 'cases' in the JSON response was used for the "View Cases" modal. 
-    # Since we have full metrics, we can return the list of processed cases corresponding to the raw records.
-    # Actually, we can just return the processed versions of result_raw_records manually or take them from filtered_metrics?
-    # But filtered_metrics doesn't have a "all_cases" list. 
-    # Let's just create the display cases manually like make_dr_record would.
-    # OR better: The "View Cases" button usually showed the list of cases matching the filter.
-    # Since we are returning the intersection, we can just map result_raw_records to display format.
-    
     def to_display_case(r):
         return {
             'pan': r.get('pan_no'), 'old_los': r.get('old_los_id'), 'new_los': r.get('new_los_id'),
             'industry': r.get('industry'), 'state': r.get('state'), 'info': 'Matched', # Info placeholder
-            'old_status': r.get('approval_status'), 'new_status': r.get('new_status', r.get('approval_status'))
+            'old_status': r.get('old_status'), 'new_status': r.get('new_status')
         }
     
     display_cases = [to_display_case(r) for r in result_raw_records]
@@ -282,6 +275,9 @@ def safe_float(v, is_score=False):
 
 def _calculate_live_metrics(records):
     """Calculate the 17 metrics live for a subset of records."""
+    if not isinstance(records, (list, tuple)):
+        return None
+
     # Using separate lists to satisfy strict type checkers
     m_cibil_drop = []
     m_cmr_inc = []
@@ -595,6 +591,9 @@ def _parse_deviation(segment, default_category):
 
 def _count_deviations_live(record):
     """Count only UNIQUE HIGH criticality deviations."""
+    if not isinstance(record, dict):
+        return 0
+
     deviation_cols = ['BankDataSummaryDeviation', 'GstnDataDeviation', 'BusinessProfileDeviation',
                       'PosidexDeviation', 'ConsumerBureauDeviation', 'CommercialBureauDeviation']
     
@@ -622,6 +621,9 @@ def _count_deviations_live(record):
 def _get_comparison(old_los_str, new_los_str):
     """Perform comparison using pre-computed lookup (no pandas needed)."""
     try:
+        if comparison_lookup is None:
+             return jsonify({'error': 'Data not yet loaded'}), 503
+
         old_rec = comparison_lookup.get(old_los_str)
         new_rec = comparison_lookup.get(new_los_str)
 
@@ -1032,9 +1034,17 @@ HTML_TEMPLATE = """
                 <button class="btn btn-secondary" onclick="clearSearch()">Clear</button>
             </div>
             <div class="filter-bar">
-                <span class="filter-label">Filter by Status:</span>
+                <span class="filter-label">Status:</span>
                 <select id="statusFilter" class="filter-select" onchange="applyFilters()">
                     <option value="">All Statuses</option>
+                </select>
+                <span class="filter-label" style="margin-left: 1rem;">Old Program:</span>
+                <select id="oldProgramFilter" class="filter-select" onchange="applyFilters()">
+                    <option value="">All Old Programs</option>
+                </select>
+                <span class="filter-label" style="margin-left: 1rem;">Child Program:</span>
+                <select id="newProgramFilter" class="filter-select" onchange="applyFilters()">
+                    <option value="">All Child Programs</option>
                 </select>
             </div>
         </div>
@@ -1097,6 +1107,12 @@ HTML_TEMPLATE = """
 
                 <div class="portfolio-filters">
                     <div class="portfolio-filter-group">
+                        <span class="portfolio-filter-label">Old Status:</span>
+                        <select id="portfolioOldStatusFilter" class="filter-select" onchange="loadPortfolioAnalysis()">
+                            <option value="">All Statuses</option>
+                        </select>
+                    </div>
+                    <div class="portfolio-filter-group">
                         <span class="portfolio-filter-label">Child Status:</span>
                         <select id="portfolioStatusFilter" class="filter-select" onchange="loadPortfolioAnalysis()">
                             <option value="">All Statuses</option>
@@ -1109,7 +1125,7 @@ HTML_TEMPLATE = """
                         </select>
                     </div>
                     <div class="portfolio-filter-group">
-                        <span class="portfolio-filter-label">Program:</span>
+                        <span class="portfolio-filter-label">Child Program:</span>
                         <select id="portfolioProgramFilter" class="filter-select" onchange="loadPortfolioAnalysis()">
                             <option value="">All Programs</option>
                             <option value="Renewal program">Renewal Program</option>
@@ -1276,7 +1292,7 @@ HTML_TEMPLATE = """
                 const result = await response.json();
                 
                 allData = result.data || [];
-                populateStatusFilter(allData);
+                populateFilters(allData);
                 applyFilters();
                 updateStats(result.total || 0);
                 
@@ -1290,7 +1306,8 @@ HTML_TEMPLATE = """
             }
         }
 
-        function populateStatusFilter(data) {
+        function populateFilters(data) {
+            // Status
             const statusFilter = document.getElementById('statusFilter');
             const statuses = new Set();
             data.forEach(row => statuses.add(row.new_status));
@@ -1301,12 +1318,41 @@ HTML_TEMPLATE = """
                 option.textContent = status;
                 statusFilter.appendChild(option);
             });
+
+            // Old Program
+            const oldProgFilter = document.getElementById('oldProgramFilter');
+            const oldProgs = new Set();
+            data.forEach(row => { if(row.old_program) oldProgs.add(row.old_program); });
+            oldProgFilter.innerHTML = '<option value="">All Old Programs</option>';
+            Array.from(oldProgs).sort().forEach(prog => {
+                const option = document.createElement('option');
+                option.value = prog;
+                option.textContent = prog;
+                oldProgFilter.appendChild(option);
+            });
+
+            // Child Program (New Program)
+            const newProgFilter = document.getElementById('newProgramFilter');
+            const newProgs = new Set();
+            data.forEach(row => { if(row.new_program) newProgs.add(row.new_program); });
+            newProgFilter.innerHTML = '<option value="">All Child Programs</option>';
+            Array.from(newProgs).sort().forEach(prog => {
+                const option = document.createElement('option');
+                option.value = prog;
+                option.textContent = prog;
+                newProgFilter.appendChild(option);
+            });
         }
 
         function applyFilters() {
             const statusFilter = document.getElementById('statusFilter').value;
+            const oldProgFilter = document.getElementById('oldProgramFilter').value;
+            const newProgFilter = document.getElementById('newProgramFilter').value;
+
             filteredData = allData.filter(row => {
                 if (statusFilter && row.new_status !== statusFilter) return false;
+                if (oldProgFilter && row.old_program !== oldProgFilter) return false;
+                if (newProgFilter && row.new_program !== newProgFilter) return false;
                 return true;
             });
             currentPage = 1;
@@ -1417,7 +1463,13 @@ HTML_TEMPLATE = """
         function updateStats(total) { document.getElementById('totalRecords').textContent = total.toLocaleString(); }
         function updateShowingCount() { document.getElementById('showingRecords').textContent = filteredData.length.toLocaleString(); }
         function searchData() { loadDashboardData(document.getElementById('searchInput').value); }
-        function clearSearch() { document.getElementById('searchInput').value = ''; document.getElementById('statusFilter').value = ''; loadDashboardData(); }
+        function clearSearch() { 
+            document.getElementById('searchInput').value = ''; 
+            document.getElementById('statusFilter').value = ''; 
+            document.getElementById('oldProgramFilter').value = ''; 
+            document.getElementById('newProgramFilter').value = ''; 
+            loadDashboardData(); 
+        }
 
         // ---- COMPARISON ----
         async function loadComparison(oldId, newId) {
@@ -1616,17 +1668,26 @@ HTML_TEMPLATE = """
             content.style.display = 'none';
 
             try {
+                const oldStatus = document.getElementById('portfolioOldStatusFilter').value;
                 const status = document.getElementById('portfolioStatusFilter').value;
                 const program = document.getElementById('portfolioProgramFilter').value;
-                const url = `/api/portfolio-analysis?status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
+                const url = `/api/portfolio-analysis?old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
                 
                 const response = await fetch(url);
                 const data = await response.json();
+                if (!oldStatus && !status && !program) {
+                    populatePortfolioFilters(allData);
+                }
                 if (!data.total_pans && data.total_pans !== 0) { loading.innerHTML = '<div>No data available</div>'; return; }
                 renderMetricsGrid(data);
                 renderBreakdownTables(data);
                 content.style.display = 'block';
                 content.classList.add('fade-in');
+                // Auto-sync: re-apply AND filter if parameters are selected
+                const selectedParams = getSelectedParams();
+                if (selectedParams.length > 0) {
+                    applyMultiParamFilter();
+                }
                 loading.style.display = 'none';
             } catch (error) {
                 loading.innerHTML = '<div>Error loading portfolio analysis</div>';
@@ -1691,6 +1752,38 @@ HTML_TEMPLATE = """
         }
 
         // ---- DRILL-DOWN ----
+        function populatePortfolioFilters(records) {
+            const oldStatuses = new Set();
+            const newStatuses = new Set();
+            const programs = new Set();
+            records.forEach(r => {
+                if (r.old_status) oldStatuses.add(r.old_status);
+                if (r.new_status) newStatuses.add(r.new_status);
+                if (r.new_program) programs.add(r.new_program);
+            });
+            const oldStatusEl = document.getElementById('portfolioOldStatusFilter');
+            const oldStatusVal = oldStatusEl.value;
+            oldStatusEl.innerHTML = '<option value="">All Statuses</option>';
+            [...oldStatuses].sort().forEach(s => {
+                oldStatusEl.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+            oldStatusEl.value = oldStatusVal;
+            const newStatusEl = document.getElementById('portfolioStatusFilter');
+            const newStatusVal = newStatusEl.value;
+            newStatusEl.innerHTML = '<option value="">All Statuses</option>';
+            [...newStatuses].sort().forEach(s => {
+                newStatusEl.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+            newStatusEl.value = newStatusVal;
+            const programEl = document.getElementById('portfolioProgramFilter');
+            const programVal = programEl.value;
+            programEl.innerHTML = '<option value="">All Programs</option>';
+            [...programs].sort().forEach(s => {
+                programEl.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+            programEl.value = programVal;
+        }
+
         async function showDrillDown(metricId, label, extraFilters = {}) {
             const modal = document.getElementById('drillDownModal');
             const loading = document.getElementById('modalLoading');
@@ -1703,10 +1796,11 @@ HTML_TEMPLATE = """
             content.style.display = 'none';
 
             try {
+                const oldStatus = document.getElementById('portfolioOldStatusFilter').value;
                 const status = document.getElementById('portfolioStatusFilter').value;
                 const program = document.getElementById('portfolioProgramFilter').value;
                 
-                let url = `/api/drill-down?metric=${metricId}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
+                let url = `/api/drill-down?metric=${metricId}&old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
                 
                 if (extraFilters.industry) url += `&industry=${encodeURIComponent(extraFilters.industry)}`;
                 if (extraFilters.state) url += `&state=${encodeURIComponent(extraFilters.state)}`;
@@ -1822,9 +1916,10 @@ HTML_TEMPLATE = """
             document.getElementById('multiSelectDropdown').classList.remove('open');
             document.getElementById('multiSelectBtn').classList.remove('open');
 
+            const oldStatus = document.getElementById('portfolioOldStatusFilter').value;
             const status = document.getElementById('portfolioStatusFilter').value;
             const program = document.getElementById('portfolioProgramFilter').value;
-            const url = `/api/multi-param-filter?params=${encodeURIComponent(selected.join(','))}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
+            const url = `/api/multi-param-filter?params=${encodeURIComponent(selected.join(','))}&old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
 
             try {
                 const response = await fetch(url);
