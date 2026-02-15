@@ -1683,14 +1683,15 @@ HTML_TEMPLATE = """
                 renderBreakdownTables(data);
                 content.style.display = 'block';
                 content.classList.add('fade-in');
+                loading.style.display = 'none';
                 // Auto-sync: re-apply AND filter if parameters are selected
                 const selectedParams = getSelectedParams();
                 if (selectedParams.length > 0) {
-                    applyMultiParamFilter();
+                    try { await applyMultiParamFilter(); } catch(e) { /* ignore sync errors */ }
                 }
-                loading.style.display = 'none';
             } catch (error) {
                 loading.innerHTML = '<div>Error loading portfolio analysis</div>';
+                loading.style.display = 'block';
             }
         }
 
