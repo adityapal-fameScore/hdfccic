@@ -20,7 +20,8 @@ from collections import defaultdict
 
 SOURCE_FILES = [
     'BRE_Context_ChildvsParent.xlsx',
-    'ApplicantDetailsOfParentAnd_Child.xlsx'
+    'ApplicantDetailsOfParentAnd_Child.xlsx',
+    'Namemacthandposidex.xlsx'
 ]
 
 OUTPUT_DASHBOARD   = 'dashboard_records.json'
@@ -55,7 +56,10 @@ COMPARISON_COLUMNS = [
 
     # Deviations
     'BankDataSummaryDeviation', 'GstnDataDeviation', 'BusinessProfileDeviation',
-    'PosidexDeviation', 'ConsumerBureauDeviation', 'CommercialBureauDeviation'
+    'PosidexDeviation', 'ConsumerBureauDeviation', 'CommercialBureauDeviation',
+
+    # Name Match and Posidex
+    'Posidex_Match', 'Bank_Name_%', 'udyam_namematch_%', 'GST Name Macth %'
 ]
 
 
@@ -83,6 +87,18 @@ def load_and_merge():
         df_applicant[['loan_request_id', 'nature_business', 'stateFC', 'stateApplicant', 'SalesRMName',
                       'BankDataSummaryDeviation', 'GstnDataDeviation', 'BusinessProfileDeviation',
                       'PosidexDeviation', 'ConsumerBureauDeviation', 'CommercialBureauDeviation']],
+        on='loan_request_id',
+        how='left'
+    )
+
+    print("  Loading Namemacthandposidex.xlsx...")
+    df_name_pos = pd.read_excel(SOURCE_FILES[2])
+    print(f"    ✓ {len(df_name_pos):,} records")
+
+    print("  Merging NameMatch data...")
+    df_merged = pd.merge(
+        df_merged,
+        df_name_pos[['loan_request_id', 'Posidex_Match', 'Bank_Name_%', 'udyam_namematch_%', 'GST Name Macth %']],
         on='loan_request_id',
         how='left'
     )
@@ -128,6 +144,22 @@ def load_and_merge():
 # STEP 2: BUILD DASHBOARD RECORDS
 # ============================================================================
 
+def parse_match_pct(val):
+    if pd.isna(val):
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val)
+    if '=>' in s:
+        try:
+            return float(s.split('=>')[-1].strip())
+        except:
+            return 0.0
+    try:
+        return float(s)
+    except:
+        return 0.0
+
 def build_dashboard_records(df_merged):
     print("\n" + "=" * 80)
     print("STEP 2: BUILDING DASHBOARD RECORDS")
@@ -154,7 +186,11 @@ def build_dashboard_records(df_merged):
                     'old_created': parent['created_on'].strftime('%Y-%m-%d') if pd.notna(parent['created_on']) else '—',
                     'new_created': child['created_on'].strftime('%Y-%m-%d') if pd.notna(child['created_on']) else '—',
                     'industry': str(child.get('industry', 'Unknown')),
-                    'state': str(child.get('state', 'Unknown'))
+                    'state': str(child.get('state', 'Unknown')),
+                    'posidex_match': str(child.get('Posidex_Match', '—')),
+                    'bank_match': parse_match_pct(child.get('Bank_Name_%', 0)),
+                    'udyam_match': parse_match_pct(child.get('udyam_namematch_%', 0)),
+                    'gst_match': parse_match_pct(child.get('GST Name Macth %', 0))
                 })
 
     print(f"    ✓ Built {len(dashboard_records):,} parent-child pairs")

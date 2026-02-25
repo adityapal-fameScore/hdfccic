@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import time
+from typing import Dict, List, Any, Optional, Set, Tuple, cast
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -28,9 +29,9 @@ PORTFOLIO_FILE   = os.path.join(DATA_DIR, 'portfolio_metrics.json')
 COMPARISON_FILE  = os.path.join(DATA_DIR, 'comparison_lookup.json')
 
 # In-memory data (loaded once at startup)
-dashboard_data = []
-portfolio_data = {}
-comparison_lookup = {}
+dashboard_data: List[Any] = []
+portfolio_data: Dict[str, Any] = {}
+comparison_lookup: Dict[str, Any] = {}
 
 
 # ============================================================================
@@ -111,6 +112,14 @@ def api_portfolio_analysis():
     old_status_val = request.args.get('old_status', '').strip().lower()
     status_filter = request.args.get('status', '').strip().lower()
     program_filter = request.args.get('program', '').strip().lower()
+    
+    posidex_filter = request.args.get('posidex', '').strip().lower()
+    gst_min = request.args.get('gst_min')
+    gst_max = request.args.get('gst_max')
+    bank_min = request.args.get('bank_min')
+    bank_max = request.args.get('bank_max')
+    udyam_min = request.args.get('udyam_min')
+    udyam_max = request.args.get('udyam_max')
 
     # Always filter and calculate live for consistency
     filtered_records = []
@@ -118,7 +127,14 @@ def api_portfolio_analysis():
         old_status_match = not old_status_val or str(r.get('old_status', '')).lower() == old_status_val
         status_match = not status_filter or str(r.get('new_status', '')).lower() == status_filter
         program_match = not program_filter or str(r.get('new_program', '')).lower() == program_filter
-        if old_status_match and status_match and program_match:
+        posidex_match = not posidex_filter or str(r.get('posidex_match', '')).lower() == posidex_filter
+        
+        gst_match = val_in_range(r.get('gst_match'), gst_min, gst_max)
+        bank_match = val_in_range(r.get('bank_match'), bank_min, bank_max)
+        udyam_match = val_in_range(r.get('udyam_match'), udyam_min, udyam_max)
+
+        if old_status_match and status_match and program_match and posidex_match and \
+           gst_match and bank_match and udyam_match:
             filtered_records.append(r)
 
     # Return live calculation
@@ -133,31 +149,41 @@ def api_drill_down():
     program_filter = request.args.get('program', '').strip().lower()
     industry_filter = request.args.get('industry', '').strip()
     state_filter = request.args.get('state', '').strip()
+    
+    posidex_filter = request.args.get('posidex', '').strip().lower()
+    gst_min = request.args.get('gst_min')
+    gst_max = request.args.get('gst_max')
+    bank_min = request.args.get('bank_min')
+    bank_max = request.args.get('bank_max')
+    udyam_min = request.args.get('udyam_min')
+    udyam_max = request.args.get('udyam_max')
 
     if not metric or not portfolio_data:
         return jsonify({'error': 'Invalid'}), 400
 
-    # Always calculate live for consistency with dashboard cards
-    # If no filters, we still use dashboard_data to ensure sync
     target_records = dashboard_data
     
-    # Apply filters if present
-    if old_status_val or status_filter or program_filter or industry_filter or state_filter:
-        filtered_input = []
-        for r in dashboard_data:
-            if old_status_val and str(r.get('old_status', '')).lower() != old_status_val: continue
-            if status_filter and str(r.get('new_status', '')).lower() != status_filter: continue
-            if program_filter and str(r.get('new_program', '')).lower() != program_filter: continue
-            if industry_filter and r.get('industry') != industry_filter: continue
-            if state_filter and r.get('state') != state_filter: continue
-            filtered_input.append(r)
-        target_records = filtered_input
+    filtered_input = []
+    for r in dashboard_data:
+        if old_status_val and str(r.get('old_status', '')).lower() != old_status_val: continue
+        if status_filter and str(r.get('new_status', '')).lower() != status_filter: continue
+        if program_filter and str(r.get('new_program', '')).lower() != program_filter: continue
+        if industry_filter and str(r.get('industry', '')).lower() != industry_filter.lower(): continue
+        if state_filter and str(r.get('state', '')).lower() != state_filter.lower(): continue
+        if posidex_filter and str(r.get('posidex_match', '')).lower() != posidex_filter: continue
 
-    # Re-calculate metrics for the subset
-    live_results = _calculate_live_metrics(target_records)
-    raw_res = live_results.get(metric)
-    cases_to_return = raw_res if isinstance(raw_res, list) else []
-    
+        if not val_in_range(r.get('gst_match'), gst_min, gst_max): continue
+        if not val_in_range(r.get('bank_match'), bank_min, bank_max): continue
+        if not val_in_range(r.get('udyam_match'), udyam_min, udyam_max): continue
+
+        filtered_input.append(r)
+    target_records = filtered_input
+
+    # Re-calculate specific metric for the subset (Optimized)
+    cases_to_return = _calculate_live_metrics(target_records, target_metric=metric)
+    if not isinstance(cases_to_return, list):
+         cases_to_return = []
+         
     return jsonify({'metric': str(metric), 'count': len(cases_to_return), 'cases': cases_to_return})
 
 
@@ -168,6 +194,14 @@ def api_multi_param_filter():
     old_status_val = request.args.get('old_status', '').strip().lower()
     status_filter = request.args.get('status', '').strip().lower()
     program_filter = request.args.get('program', '').strip().lower()
+    
+    posidex_filter = request.args.get('posidex', '').strip().lower()
+    gst_min = request.args.get('gst_min')
+    gst_max = request.args.get('gst_max')
+    bank_min = request.args.get('bank_min')
+    bank_max = request.args.get('bank_max')
+    udyam_min = request.args.get('udyam_min')
+    udyam_max = request.args.get('udyam_max')
 
     if not params_str:
         return jsonify({'error': 'No parameters selected'}), 400
@@ -180,6 +214,12 @@ def api_multi_param_filter():
         if old_status_val and str(r.get('old_status', '')).lower() != old_status_val: continue
         if status_filter and str(r.get('new_status', '')).lower() != status_filter: continue
         if program_filter and str(r.get('new_program', '')).lower() != program_filter: continue
+        if posidex_filter and str(r.get('posidex_match', '')).lower() != posidex_filter: continue
+
+        if not val_in_range(r.get('gst_match'), gst_min, gst_max): continue
+        if not val_in_range(r.get('bank_match'), bank_min, bank_max): continue
+        if not val_in_range(r.get('udyam_match'), udyam_min, udyam_max): continue
+
         filtered_records.append(r)
 
     # Create a lookup for original records by ID to reconstruct the list later
@@ -189,20 +229,21 @@ def api_multi_param_filter():
         for r in filtered_records
     }
 
-    # Calculate metrics for filtered records
+    # Initial counts only (Optimized Overview Mode)
     metrics = _calculate_live_metrics(filtered_records)
+    if not metrics:
+        return jsonify({'count': 0, 'cases': [], 'selected_params': selected_params, 'counts': {}, 'total_pans': 0})
 
-    # Build case maps for each selected parameter
+    # Build case maps for each selected parameter using optimized target_metric calls
     param_case_maps = {}
     for param in selected_params:
-        case_list = metrics.get(param, [])
+        case_list = _calculate_live_metrics(filtered_records, target_metric=param)
+        if not isinstance(case_list, list):
+            continue
         case_map = {}
         for c in case_list:
             if not isinstance(c, dict): continue
-            # Use tuple key compatible with raw_record_map
-            old_val = str(c.get('old_los', ''))
-            new_val = str(c.get('new_los', ''))
-            key = (old_val, new_val)
+            key = (str(c.get('old_los', '')), str(c.get('new_los', '')))
             case_map[key] = c
         param_case_maps[param] = case_map
 
@@ -219,11 +260,13 @@ def api_multi_param_filter():
     # intersection_keys contains (old_los, new_los) tuples
     result_raw_records = []
     for key in intersection_keys:
-        if key in raw_record_map:
+        if isinstance(key, tuple) and key in raw_record_map:
             result_raw_records.append(raw_record_map[key])
 
     # Re-calculate FULL metrics for the AND-filtered subset using RAW records
     filtered_metrics = _calculate_live_metrics(result_raw_records)
+    if not filtered_metrics:
+        filtered_metrics = {'counts': {}, 'total_pans': 0, 'industry_breakdown': [], 'state_breakdown': []}
     
     def to_display_case(r):
         return {
@@ -239,10 +282,10 @@ def api_multi_param_filter():
         'cases': display_cases,
         'selected_params': selected_params,
         # Merge full metrics for dashboard update
-        'counts': filtered_metrics['counts'],
-        'total_pans': filtered_metrics['total_pans'],
-        'industry_breakdown': filtered_metrics['industry_breakdown'],
-        'state_breakdown': filtered_metrics['state_breakdown']
+        'counts': filtered_metrics.get('counts', {}),
+        'total_pans': filtered_metrics.get('total_pans', 0),
+        'industry_breakdown': filtered_metrics.get('industry_breakdown', []),
+        'state_breakdown': filtered_metrics.get('state_breakdown', [])
     })
 
 
@@ -257,50 +300,55 @@ def api_compare():
 
 
 def safe_float(v, is_score=False):
-    """
-    Safely convert value to float.
-    is_score=True: treats 0-equivalents as None (for CIBIL/CMR).
-    is_score=False: treats 0 as 0.0 (for DPD, WD, etc).
-    """
-    if v is None or v == '':
+    if v is None or str(v).strip() in ['', '—', 'nan', 'None']:
         return None
     try:
-        f = float(v)
+        s = str(v).replace('%', '').strip()
+        f = float(s)
         if is_score and f <= 0:
             return None
         return f
-    except (ValueError, TypeError):
+    except:
         return None
 
+def val_in_range(val, v_min, v_max):
+    """Helper for numeric range filtering. If a filter is set but data is missing, reject."""
+    if not v_min and not v_max: return True
+    try:
+        f_val = safe_float(val)
+        if f_val is None: return False
+        if v_min and f_val < float(v_min): return False
+        if v_max and f_val > float(v_max): return False
+        return True
+    except:
+        return False
 
-def _calculate_live_metrics(records):
-    """Calculate the 17 metrics live for a subset of records."""
+
+
+def _calculate_live_metrics(records, target_metric=None):
+    """
+    Optimized metric calculation.
+    Mode 1: target_metric is None (Overview). Calculates counts only. Extremely fast.
+    Mode 2: target_metric is string (Drill-down). Returns ONLY the list for that metric.
+    """
     if not isinstance(records, (list, tuple)):
-        return None
+        return {}
 
-    # Using separate lists to satisfy strict type checkers
-    m_cibil_drop = []
-    m_cmr_inc = []
-    m_cmr_gt7 = []
-    m_cibil_lt700 = []
-    m_wd_p = []
-    m_wd_c = []
-    m_dpd15_c = []
-    m_dpd15_imp = []
-    m_dpd15_deg = []
-    m_dpd30_c = []
-    m_dpd30_imp = []
-    m_dpd30_deg = []
-    m_sales_drp = []
-    m_usl_inc = []
-    m_pur_gt_sale = []
-    m_turn_not_inc = []
-    m_turn_dec = []
-    m_bto_drp = []
-    m_bto_gt150 = []
-    m_dev_1 = []
-    m_dev_2 = []
-    m_dev_3p = []
+    # Initialize counters or the single list we need
+    counts = {
+        'cibil_drop_50plus': 0, 'cmr_increase_2plus': 0, 'cmr_rank_gt7_child': 0,
+        'cibil_lt700_child': 0, 'willful_default_parent': 0, 'willful_default_child': 0,
+        'dpd_15plus_child': 0, 'dpd_15plus_improved': 0, 'dpd_15plus_degraded': 0,
+        'dpd_30plus_child': 0, 'dpd_30plus_improved': 0, 'dpd_30plus_degraded': 0,
+        'sales_dropped': 0, 'usl_increase_30pct': 0, 'purchase_gt_sales_30pct': 0,
+        'turnover_not_increased': 0, 'turnover_decreased': 0, 'bto_drop_25pct': 0,
+        'bto_gt_150pct': 0, 'deviation_count_1': 0, 'deviation_count_2': 0,
+        'deviation_count_3plus': 0, 'posidex_good': 0, 'posidex_bad': 0,
+        'posidex_no': 0, 'posidex_enquiry': 0, 'udyam_lt_50': 0, 'gst_lt_50': 0,
+        'bank_lt_50': 0, 'total_cases': 0
+    }
+
+    drilldown_list = []
 
     def make_dr_record(rec, val_info=None):
         return {
@@ -314,29 +362,29 @@ def _calculate_live_metrics(records):
             'new_status': str(rec.get('new_status', '—'))
         }
 
-    industry_metrics = {}
-    state_metrics = {}
+    industry_metrics: Dict[str, Dict[str, int]] = {}
+    state_metrics: Dict[str, Dict[str, int]] = {}
 
     for r in records:
-        oid = str(r.get('old_los_id', ''))
-        nid = str(r.get('new_los_id', ''))
-        old_rec = comparison_lookup.get(oid)
-        new_rec = comparison_lookup.get(nid)
+        oid, nid = str(r.get('old_los_id', '')), str(r.get('new_los_id', ''))
+        o_rec = comparison_lookup.get(oid)
+        n_rec = comparison_lookup.get(nid)
+        if not isinstance(o_rec, dict) or not isinstance(n_rec, dict): continue
+
+        ind, st = str(r.get('industry', 'Unknown')), str(r.get('state', 'Unknown'))
         
-        if not isinstance(old_rec, dict) or not isinstance(new_rec, dict):
-            continue
-
-        ind = str(r.get('industry', 'Unknown'))
-        st = str(r.get('state', 'Unknown'))
-
-        oc = safe_float(old_rec.get('ConsumerBureaucreditScore'), is_score=True)
-        nc = safe_float(new_rec.get('ConsumerBureaucreditScore'), is_score=True)
-        ocm = safe_float(old_rec.get('CommercialBureaucmrScore'), is_score=True)
-        ncm = safe_float(new_rec.get('CommercialBureaucmrScore'), is_score=True)
+        # Pull data once
+        oc = safe_float(o_rec.get('ConsumerBureaucreditScore'), is_score=True)
+        nc = safe_float(n_rec.get('ConsumerBureaucreditScore'), is_score=True)
+        ocm = safe_float(o_rec.get('CommercialBureaucmrScore'), is_score=True)
+        ncm = safe_float(n_rec.get('CommercialBureaucmrScore'), is_score=True)
+        
+        match_found = False
 
         # 1. CIBIL Drop
         if oc is not None and nc is not None and (oc - nc) >= 50:
-            m_cibil_drop.append(make_dr_record(r, f"{oc:.0f}->{nc:.0f}"))
+            counts['cibil_drop_50plus'] += 1
+            if target_metric == 'cibil_drop_50plus': drilldown_list.append(make_dr_record(r, f"{oc:.0f}->{nc:.0f}"))
             if ind not in industry_metrics: industry_metrics[ind] = {}
             industry_metrics[ind]['cibil_drop_50plus'] = industry_metrics[ind].get('cibil_drop_50plus', 0) + 1
             if st not in state_metrics: state_metrics[st] = {}
@@ -344,151 +392,141 @@ def _calculate_live_metrics(records):
 
         # 2. CMR Increase
         if ocm is not None and ncm is not None and (ncm - ocm) >= 2 and ncm != 10:
-            m_cmr_inc.append(make_dr_record(r, f"{ocm:.0f}->{ncm:.0f}"))
+            counts['cmr_increase_2plus'] += 1
+            if target_metric == 'cmr_increase_2plus': drilldown_list.append(make_dr_record(r, f"{ocm:.0f}->{ncm:.0f}"))
 
         # 3. CMR > 7
         if ncm is not None and ncm > 7:
-            m_cmr_gt7.append(make_dr_record(r, f"CMR: {ncm:.0f}"))
+            counts['cmr_rank_gt7_child'] += 1
+            if target_metric == 'cmr_rank_gt7_child': drilldown_list.append(make_dr_record(r, f"CMR: {ncm:.0f}"))
 
         # 4. CIBIL < 700
         if nc is not None and nc < 700:
-            m_cibil_lt700.append(make_dr_record(r, f"CIBIL: {nc:.0f}"))
+            counts['cibil_lt700_child'] += 1
+            if target_metric == 'cibil_lt700_child': drilldown_list.append(make_dr_record(r, f"CIBIL: {nc:.0f}"))
 
-        # 5. Willful Default
-        wd_new = (safe_float(new_rec.get('ConsumerBureaunoOfWillFulDefaults')) or 0) + \
-                 (safe_float(new_rec.get('CommercialBureaunoOfWillFulDefaults')) or 0)
+        # 5. Willful Default Child
+        wd_new = (safe_float(n_rec.get('ConsumerBureaunoOfWillFulDefaults')) or 0) + \
+                 (safe_float(n_rec.get('CommercialBureaunoOfWillFulDefaults')) or 0)
         if wd_new > 0:
-            m_wd_c.append(make_dr_record(r, f"WD: {wd_new:.0f}"))
+            counts['willful_default_child'] += 1
+            if target_metric == 'willful_default_child': drilldown_list.append(make_dr_record(r, f"WD: {wd_new:.0f}"))
             if ind not in industry_metrics: industry_metrics[ind] = {}
             industry_metrics[ind]['willful_default_child'] = industry_metrics[ind].get('willful_default_child', 0) + 1
             if st not in state_metrics: state_metrics[st] = {}
             state_metrics[st]['willful_default_child'] = state_metrics[st].get('willful_default_child', 0) + 1
 
-        # 7. DPD 15+
-        dpd15_new = (safe_float(new_rec.get('ConsumerBureaufifteenPlusDPD')) or 0) + \
-                   (safe_float(new_rec.get('CommercialBureaufifteenPlusDPD')) or 0)
-        if dpd15_new > 0:
-            m_dpd15_c.append(make_dr_record(r, f"DPD: {dpd15_new:.0f}"))
+        # 7. DPD 15+ Child
+        dp15c = (safe_float(n_rec.get('ConsumerBureaufifteenPlusDPD')) or 0) + (safe_float(n_rec.get('CommercialBureaufifteenPlusDPD')) or 0)
+        if dp15c > 0:
+            counts['dpd_15plus_child'] += 1
+            if target_metric == 'dpd_15plus_child': drilldown_list.append(make_dr_record(r, f"DPD: {dp15c:.0f}"))
 
-        # 10. DPD 30+
-        dpd30_new = (safe_float(new_rec.get('ConsumerBureauthirtyPlusDPD')) or 0) + \
-                   (safe_float(new_rec.get('CommercialBureauthirtyPlusDPD')) or 0)
-        if dpd30_new > 0:
-            m_dpd30_c.append(make_dr_record(r, f"DPD: {dpd30_new:.0f}"))
+        # 10. DPD 30+ Child
+        dp30c = (safe_float(n_rec.get('ConsumerBureauthirtyPlusDPD')) or 0) + (safe_float(n_rec.get('CommercialBureauthirtyPlusDPD')) or 0)
+        if dp30c > 0:
+            counts['dpd_30plus_child'] += 1
+            if target_metric == 'dpd_30plus_child': drilldown_list.append(make_dr_record(r, f"DPD: {dp30c:.0f}"))
             if ind not in industry_metrics: industry_metrics[ind] = {}
             industry_metrics[ind]['dpd_30plus_child'] = industry_metrics[ind].get('dpd_30plus_child', 0) + 1
             if st not in state_metrics: state_metrics[st] = {}
             state_metrics[st]['dpd_30plus_child'] = state_metrics[st].get('dpd_30plus_child', 0) + 1
 
         # 13. Sales Dropped
-        ot = safe_float(old_rec.get('GstnDatalastTwelveMonthTurnOver'))
-        nt = safe_float(new_rec.get('GstnDatalastTwelveMonthTurnOver'))
-        if ot is not None and nt is not None and ot > 0 and nt < (ot * 0.9):
-            m_sales_drp.append(make_dr_record(r, f"{ot:,.0f}->{nt:,.0f}"))
+        ot, nt = safe_float(o_rec.get('GstnDatalastTwelveMonthTurnOver')), safe_float(n_rec.get('GstnDatalastTwelveMonthTurnOver'))
+        if ot and nt and ot > 0 and nt < (ot * 0.9):
+            counts['sales_dropped'] += 1
+            if target_metric == 'sales_dropped': drilldown_list.append(make_dr_record(r, f"{ot:,.0f}->{nt:,.0f}"))
             if ind not in industry_metrics: industry_metrics[ind] = {}
             industry_metrics[ind]['sales_dropped'] = industry_metrics[ind].get('sales_dropped', 0) + 1
             if st not in state_metrics: state_metrics[st] = {}
             state_metrics[st]['sales_dropped'] = state_metrics[st].get('sales_dropped', 0) + 1
 
         # 14. USL Increase
-        ousl = (safe_float(old_rec.get('ConsumerBureautotalUSLOutStanding')) or 0) + \
-               (safe_float(old_rec.get('CommercialBureautotalUSLOutStanding')) or 0)
-        nusl = (safe_float(new_rec.get('ConsumerBureautotalUSLOutStanding')) or 0) + \
-               (safe_float(new_rec.get('CommercialBureautotalUSLOutStanding')) or 0)
+        ousl = (safe_float(o_rec.get('ConsumerBureautotalUSLOutStanding')) or 0) + (safe_float(o_rec.get('CommercialBureautotalUSLOutStanding')) or 0)
+        nusl = (safe_float(n_rec.get('ConsumerBureautotalUSLOutStanding')) or 0) + (safe_float(n_rec.get('CommercialBureautotalUSLOutStanding')) or 0)
         if ousl > 0 and (nusl - ousl) / ousl >= 0.3:
-            m_usl_inc.append(make_dr_record(r, f"{ousl:,.0f}->{nusl:,.0f}"))
+            counts['usl_increase_30pct'] += 1
+            if target_metric == 'usl_increase_30pct': drilldown_list.append(make_dr_record(r, f"{ousl:,.0f}->{nusl:,.0f}"))
 
-        # 15. Purchase > Sales
-        np = safe_float(new_rec.get('GstnDatalastTwelveMonthPurchase'))
-        if nt is not None and np is not None and nt > 0 and np > (nt * 1.3):
-            m_pur_gt_sale.append(make_dr_record(r, f"S:{nt:,.0f} P:{np:,.0f}"))
+        # 15. Purchase > Sales 30%
+        np = safe_float(n_rec.get('GstnDatalastTwelveMonthPurchase'))
+        if nt and np and nt > 0 and np > (nt * 1.3):
+            counts['purchase_gt_sales_30pct'] += 1
+            if target_metric == 'purchase_gt_sales_30pct': drilldown_list.append(make_dr_record(r, f"S:{nt:,.0f} P:{np:,.0f}"))
 
         # 16. Turnover
-        omcp = safe_float(old_rec.get('mcpLastTwelveMonthTurnOver'))
-        nmcp = safe_float(new_rec.get('mcpLastTwelveMonthTurnOver'))
+        omcp, nmcp = safe_float(o_rec.get('mcpLastTwelveMonthTurnOver')), safe_float(n_rec.get('mcpLastTwelveMonthTurnOver'))
         if omcp is not None and nmcp is not None:
             if nmcp <= omcp:
-                m_turn_not_inc.append(make_dr_record(r, f"{omcp:,.0f}->{nmcp:,.0f}"))
+                counts['turnover_not_increased'] += 1
+                if target_metric == 'turnover_not_increased': drilldown_list.append(make_dr_record(r, f"{omcp:,.0f}->{nmcp:,.0f}"))
             if nmcp < omcp:
-                m_turn_dec.append(make_dr_record(r, f"{omcp:,.0f}->{nmcp:,.0f}"))
+                counts['turnover_decreased'] += 1
+                if target_metric == 'turnover_decreased': drilldown_list.append(make_dr_record(r, f"{omcp:,.0f}->{nmcp:,.0f}"))
 
         # 18. BTO
-        obto = safe_float(old_rec.get('BankDataSummarybtoOfAvgTurnOverLastTwelveMonths'))
-        nbto = safe_float(new_rec.get('BankDataSummarybtoOfAvgTurnOverLastTwelveMonths'))
+        obto, nbto = safe_float(o_rec.get('BankDataSummarybtoOfAvgTurnOverLastTwelveMonths')), safe_float(n_rec.get('BankDataSummarybtoOfAvgTurnOverLastTwelveMonths'))
         if obto is not None and nbto is not None and (obto - nbto) >= 25:
-            m_bto_drp.append(make_dr_record(r, f"{obto}%->{nbto}%"))
+            counts['bto_drop_25pct'] += 1
+            if target_metric == 'bto_drop_25pct': drilldown_list.append(make_dr_record(r, f"{obto}%->{nbto}%"))
         if nbto is not None and nbto > 150:
-            m_bto_gt150.append(make_dr_record(r, f"BTO: {nbto}%"))
+            counts['bto_gt_150pct'] += 1
+            if target_metric == 'bto_gt_150pct': drilldown_list.append(make_dr_record(r, f"BTO: {nbto}%"))
 
         # Deviations
-        dev_c = _count_deviations_live(new_rec)
+        dev_c = _count_deviations_live(n_rec)
         if dev_c == 1:
-            m_dev_1.append(make_dr_record(r, "1 Deviation"))
+            counts['deviation_count_1'] += 1
+            if target_metric == 'deviation_count_1': drilldown_list.append(make_dr_record(r, "1 Deviation"))
         elif dev_c == 2:
-            m_dev_2.append(make_dr_record(r, "2 Deviations"))
+            counts['deviation_count_2'] += 1
+            if target_metric == 'deviation_count_2': drilldown_list.append(make_dr_record(r, "2 Deviations"))
         elif dev_c >= 3:
-            m_dev_3p.append(make_dr_record(r, f"{dev_c} Deviations"))
+            counts['deviation_count_3plus'] += 1
+            if target_metric == 'deviation_count_3plus': drilldown_list.append(make_dr_record(r, f"{dev_c} Deviations"))
 
+        # Posidex Match
+        px = str(r.get('posidex_match', '')).lower()
+        if 'good' in px:
+            counts['posidex_good'] += 1
+            if target_metric == 'posidex_good': drilldown_list.append(make_dr_record(r, "Good Match"))
+        elif 'bad' in px:
+            counts['posidex_bad'] += 1
+            if target_metric == 'posidex_bad': drilldown_list.append(make_dr_record(r, "Bad Match"))
+        elif 'no' in px:
+            counts['posidex_no'] += 1
+            if target_metric == 'posidex_no': drilldown_list.append(make_dr_record(r, "No Match"))
+        elif 'enquiry' in px:
+            counts['posidex_enquiry'] += 1
+            if target_metric == 'posidex_enquiry': drilldown_list.append(make_dr_record(r, "Enquiry"))
+
+        # Name Match < 50%
+        gm, bm, um = safe_float(r.get('gst_match')), safe_float(r.get('bank_match')), safe_float(r.get('udyam_match'))
+        if gm is not None and gm < 50:
+            counts['gst_lt_50'] += 1
+            if target_metric == 'gst_lt_50': drilldown_list.append(make_dr_record(r, f"GSTN: {gm}%"))
+        if bm is not None and bm < 50:
+            counts['bank_lt_50'] += 1
+            if target_metric == 'bank_lt_50': drilldown_list.append(make_dr_record(r, f"Bank: {bm}%"))
+        if um is not None and um < 50:
+            counts['udyam_lt_50'] += 1
+            if target_metric == 'udyam_lt_50': drilldown_list.append(make_dr_record(r, f"Udyam: {um}%"))
+        
+        counts['total_cases'] += 1
+        if target_metric == 'total_cases': drilldown_list.append(make_dr_record(r, "Total Portfolio"))
+
+    # Mode 2: targeted drilldown
+    if target_metric:
+        return drilldown_list
+
+    # Mode 1: overall counts (Small Payload)
     metrics = {
         'total_pans': len(records),
-        'counts': {
-            'cibil_drop_50plus': len(m_cibil_drop),
-            'cmr_increase_2plus': len(m_cmr_inc),
-            'cmr_rank_gt7_child': len(m_cmr_gt7),
-            'cibil_lt700_child': len(m_cibil_lt700),
-            'willful_default_parent': len(m_wd_p),
-            'willful_default_child': len(m_wd_c),
-            'dpd_15plus_child': len(m_dpd15_c),
-            'dpd_15plus_improved': len(m_dpd15_imp),
-            'dpd_15plus_degraded': len(m_dpd15_deg),
-            'dpd_30plus_child': len(m_dpd30_c),
-            'dpd_30plus_improved': len(m_dpd30_imp),
-            'dpd_30plus_degraded': len(m_dpd30_deg),
-            'sales_dropped': len(m_sales_drp),
-            'usl_increase_30pct': len(m_usl_inc),
-            'purchase_gt_sales_30pct': len(m_pur_gt_sale),
-            'turnover_not_increased': len(m_turn_not_inc),
-            'turnover_decreased': len(m_turn_dec),
-            'bto_drop_25pct': len(m_bto_drp),
-            'bto_gt_150pct': len(m_bto_gt150),
-            'deviation_count_1': len(m_dev_1),
-            'deviation_count_2': len(m_dev_2),
-            'deviation_count_3plus': len(m_dev_3p)
-        },
-        'cibil_drop_50plus': m_cibil_drop,
-        'cmr_increase_2plus': m_cmr_inc,
-        'cmr_rank_gt7_child': m_cmr_gt7,
-        'cibil_lt700_child': m_cibil_lt700,
-        'willful_default_parent': m_wd_p,
-        'willful_default_child': m_wd_c,
-        'dpd_15plus_child': m_dpd15_c,
-        'dpd_15plus_improved': m_dpd15_imp,
-        'dpd_15plus_degraded': m_dpd15_deg,
-        'dpd_30plus_child': m_dpd30_c,
-        'dpd_30plus_improved': m_dpd30_imp,
-        'dpd_30plus_degraded': m_dpd30_deg,
-        'sales_dropped': m_sales_drp,
-        'usl_increase_30pct': m_usl_inc,
-        'purchase_gt_sales_30pct': m_pur_gt_sale,
-        'turnover_not_increased': m_turn_not_inc,
-        'turnover_decreased': m_turn_dec,
-        'bto_drop_25pct': m_bto_drp,
-        'bto_gt_150pct': m_bto_gt150,
-        'deviation_count_1': m_dev_1,
-        'deviation_count_2': m_dev_2,
-        'deviation_count_3plus': m_dev_3p
+        'counts': counts,
+        'industry_breakdown': sorted([{'name': str(k), **v} for k, v in industry_metrics.items()], key=lambda x: int(x.get('cibil_drop_50plus',0)), reverse=True),
+        'state_breakdown': sorted([{'name': str(k), **v} for k, v in state_metrics.items()], key=lambda x: int(x.get('cibil_drop_50plus',0)), reverse=True)
     }
-
-    # Flatten and sort breakdowns
-    metrics['industry_breakdown'] = sorted(
-        [{'name': str(k), **v} for k, v in industry_metrics.items()],
-        key=lambda x: int(x.get('cibil_drop_50plus', 0)), reverse=True
-    )
-    metrics['state_breakdown'] = sorted(
-        [{'name': str(k), **v} for k, v in state_metrics.items()],
-        key=lambda x: int(x.get('cibil_drop_50plus', 0)), reverse=True
-    )
-
     return metrics
 
 
@@ -607,8 +645,11 @@ def _count_deviations_live(record):
     }
 
     unique_high_deviations = set()
+    if not record: return 0
+    
+    r_rec = cast(Dict[str, Any], record)
     for col in deviation_cols:
-        val = record.get(col)
+        val = r_rec.get(col)
         if val is not None and val not in [0, '0', 'No', 'NO', 'no', False, 'False']:
             segments = [s.strip() for s in str(val).split(' || ') if s.strip()]
             for seg in segments:
@@ -627,8 +668,11 @@ def _get_comparison(old_los_str, new_los_str):
         old_rec = comparison_lookup.get(old_los_str)
         new_rec = comparison_lookup.get(new_los_str)
 
-        if not old_rec or not new_rec:
+        if not isinstance(old_rec, dict) or not isinstance(new_rec, dict):
             return jsonify({'error': f'LOS ID not found: {old_los_str if not old_rec else new_los_str}'}), 404
+            
+        o_rec = cast(Dict[str, Any], old_rec)
+        n_rec = cast(Dict[str, Any], new_rec)
 
         params = [
             # CRITICAL PARAMETERS - Listed First
@@ -666,21 +710,28 @@ def _get_comparison(old_los_str, new_los_str):
             ('MCP BTO Avg Turnover', 'mcpBtoOfAvgTurnOverLastTwelveMonths', True, False),
             ('MCP Credit Score', 'mcpCreditScore', True, False),
             ('MCP Turnover (12M)', 'mcpLastTwelveMonthTurnOver', True, False),
+
+            # NEW: Name Match and Posidex
+            ('GST Name Match %', 'GST Name Macth %', True, False),
+            ('Bank Name Match %', 'Bank_Name_%', True, False),
+            ('Udyam Name Match %', 'udyam_namematch_%', True, False),
+            ('Posidex Match', 'Posidex_Match', False, False),
         ]
 
         comparisons = []
         has_critical = False
 
         for name, col, higher_better, is_critical in params:
-            ov = old_rec.get(col)
-            nv = new_rec.get(col)
+            ov = o_rec.get(col)
+            nv = n_rec.get(col)
             change = '—'
             status = 'no_data'
             is_highly_critical = False
 
-            # Treat 0 as None (No Data)
-            ov_val = ov if ov not in [None, 0, 0.0, '0', '0.0'] else None
-            nv_val = nv if nv not in [None, 0, 0.0, '0', '0.0'] else None
+            # Treat 0 as None (No Data) - EXCEPT for Name Match %
+            is_name_match = 'Name Match %' in name
+            ov_val = ov if (is_name_match or ov not in [None, 0, 0.0, '0', '0.0']) else None
+            nv_val = nv if (is_name_match or nv not in [None, 0, 0.0, '0', '0.0']) else None
 
             if ov_val is not None and nv_val is not None:
                 try:
@@ -727,7 +778,7 @@ def _get_comparison(old_los_str, new_los_str):
         categorized_deviations = {}
 
         for col, default_cat in deviation_col_category.items():
-            val = new_rec.get(col)
+            val = n_rec.get(col)
             if val and val not in [0, '0', 'No', 'NO', 'no', False, None, 'False']:
                 segments = [s.strip() for s in str(val).split(' || ') if s.strip()]
                 
@@ -766,7 +817,7 @@ def _get_comparison(old_los_str, new_los_str):
         all_deviations_table = []
         seen_deviations = set()
         for col, default_cat in deviation_col_category.items():
-            val = new_rec.get(col)
+            val = n_rec.get(col)
             if val and val not in [0, '0', 'No', 'NO', 'no', False, None, 'False']:
                 segments = [s.strip() for s in str(val).split(' || ') if s.strip()]
                 for seg in segments:
@@ -786,16 +837,16 @@ def _get_comparison(old_los_str, new_los_str):
         critical_dev_count = sum(len(items) for items in categorized_deviations.values())
 
         return jsonify({
-            'pan': old_rec.get('pan_no', '—'),
+            'pan': o_rec.get('pan_no', '—'),
             'old_los_id': old_los_str,
             'new_los_id': new_los_str,
-            'old_program': old_rec.get('program_name', '—'),
-            'new_program': new_rec.get('program_name', '—'),
-            'old_status': old_rec.get('approval_status', '—'),
-            'new_status': new_rec.get('approval_status', '—'),
-            'old_created': old_rec.get('created_on', '—'),
-            'new_created': new_rec.get('created_on', '—'),
-            'rm_name': new_rec.get('SalesRMName', '—'),
+            'old_program': o_rec.get('program_name', '—'),
+            'new_program': n_rec.get('program_name', '—'),
+            'old_status': o_rec.get('approval_status', '—'),
+            'new_status': n_rec.get('approval_status', '—'),
+            'old_created': o_rec.get('created_on', '—'),
+            'new_created': n_rec.get('created_on', '—'),
+            'rm_name': n_rec.get('SalesRMName', '—'),
             'deviations': list(active_deviations),
             'categorized_deviations': categorized_deviations,
             'all_deviations_table': all_deviations_table,
@@ -953,6 +1004,7 @@ HTML_TEMPLATE = """
         .metric-card.critical { border-top-color: #da1e28; }
         .metric-card.warning { border-top-color: #ff832b; }
         .metric-card.success { border-top-color: #24a148; }
+        .metric-card.info { border-top-color: #007d79; }
         .metric-label { font-size: 0.8125rem; color: #525252; text-transform: uppercase; font-weight: 600; letter-spacing: 0.75px; height: 40px; display: flex; align-items: flex-start; }
         .metric-value { font-size: 2.25rem; font-weight: 700; color: #161616; margin: 0.75rem 0; font-variant-numeric: tabular-nums; }
         .metric-subtitle { font-size: 0.8125rem; color: #697077; background: #f4f4f4; display: inline-block; padding: 2px 8px; border-radius: 4px; }
@@ -1146,6 +1198,37 @@ HTML_TEMPLATE = """
                                     <button class="btn" onclick="applyMultiParamFilter()" type="button">Apply AND</button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    <div class="portfolio-filter-group">
+                        <span class="portfolio-filter-label">Posidex Status:</span>
+                        <select id="portfolioPosidexFilter" class="filter-select" onchange="loadPortfolioAnalysis()" style="width:180px !important;">
+                            <option value="">All Statuses</option>
+                            <option value="Good Match">Good Match</option>
+                            <option value="Bad Match">Bad Match</option>
+                            <option value="No Match">No Match</option>
+                            <option value="Enquiry">Enquiry</option>
+                        </select>
+                    </div>
+                    <div class="portfolio-filter-group">
+                        <span class="portfolio-filter-label">GST Name Match %</span>
+                        <div style="display:flex; gap:0.5rem;">
+                            <input type="number" id="gstMatchMin" class="filter-select" style="width:100px !important; padding-right:1rem;" onchange="loadPortfolioAnalysis()" placeholder="Min">
+                            <input type="number" id="gstMatchMax" class="filter-select" style="width:100px !important; padding-right:1rem;" onchange="loadPortfolioAnalysis()" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="portfolio-filter-group">
+                        <span class="portfolio-filter-label">Bank Name Match %</span>
+                        <div style="display:flex; gap:0.5rem;">
+                            <input type="number" id="bankMatchMin" class="filter-select" style="width:100px !important; padding-right:1rem;" onchange="loadPortfolioAnalysis()" placeholder="Min">
+                            <input type="number" id="bankMatchMax" class="filter-select" style="width:100px !important; padding-right:1rem;" onchange="loadPortfolioAnalysis()" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="portfolio-filter-group">
+                        <span class="portfolio-filter-label">Udyam Name Match %</span>
+                        <div style="display:flex; gap:0.5rem;">
+                            <input type="number" id="udyamMatchMin" class="filter-select" style="width:100px !important; padding-right:1rem;" onchange="loadPortfolioAnalysis()" placeholder="Min">
+                            <input type="number" id="udyamMatchMax" class="filter-select" style="width:100px !important; padding-right:1rem;" onchange="loadPortfolioAnalysis()" placeholder="Max">
                         </div>
                     </div>
                     <div class="portfolio-filter-group" style="display:flex; align-items:flex-end;">
@@ -1671,14 +1754,12 @@ HTML_TEMPLATE = """
             content.style.display = 'none';
 
             try {
-                const oldStatus = document.getElementById('portfolioOldStatusFilter').value;
-                const status = document.getElementById('portfolioStatusFilter').value;
-                const program = document.getElementById('portfolioProgramFilter').value;
-                const url = `/api/portfolio-analysis?old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
+                const filterParams = getFilterParams();
+                const url = `/api/portfolio-analysis?${filterParams}`;
                 
                 const response = await fetch(url);
                 const data = await response.json();
-                if (!oldStatus && !status && !program) {
+                if (!filterParams.includes('&status=') && !filterParams.includes('&program=')) {
                     populatePortfolioFilters(allData);
                 }
                 if (!data.total_pans && data.total_pans !== 0) { loading.innerHTML = '<div>No data available</div>'; return; }
@@ -1704,6 +1785,7 @@ HTML_TEMPLATE = """
             const val = (k) => counts[k] || 0;
 
             const metrics = [
+                { id: 'total_cases', label: 'Total Cases', type: 'info' },
                 { id: 'cibil_drop_50plus', label: 'CIBIL Drop ≥50', type: 'critical' },
                 { id: 'cibil_lt700_child', label: 'CIBIL <700 (Child)', type: 'critical' },
                 { id: 'willful_default_child', label: 'Willful Default', type: 'critical' },
@@ -1721,6 +1803,13 @@ HTML_TEMPLATE = """
                 { id: 'deviation_count_1', label: '1 Deviation', type: 'success' },
                 { id: 'deviation_count_2', label: '2 Deviations', type: 'warning' },
                 { id: 'deviation_count_3plus', label: '3+ Deviations', type: 'critical' },
+                { id: 'posidex_good', label: 'Posidex: Good Match', type: 'success' },
+                { id: 'posidex_bad', label: 'Posidex: Bad Match', type: 'critical' },
+                { id: 'posidex_no', label: 'Posidex: No Match', type: 'critical' },
+                { id: 'posidex_enquiry', label: 'Posidex: Enquiry', type: 'warning' },
+                { id: 'udyam_lt_50', label: 'Udyam Name Match < 50%', type: 'critical' },
+                { id: 'gst_lt_50', label: 'GSTN Name Match < 50%', type: 'critical' },
+                { id: 'bank_lt_50', label: 'Bank Name Match < 50%', type: 'critical' },
             ];
 
             document.getElementById('allMetricsGrid').innerHTML = metrics.map(m => {
@@ -1800,11 +1889,8 @@ HTML_TEMPLATE = """
             content.style.display = 'none';
 
             try {
-                const oldStatus = document.getElementById('portfolioOldStatusFilter').value;
-                const status = document.getElementById('portfolioStatusFilter').value;
-                const program = document.getElementById('portfolioProgramFilter').value;
-                
-                let url = `/api/drill-down?metric=${metricId}&old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
+                const filterParams = getFilterParams();
+                let url = `/api/drill-down?metric=${metricId}&${filterParams}`;
                 
                 if (extraFilters.industry) url += `&industry=${encodeURIComponent(extraFilters.industry)}`;
                 if (extraFilters.state) url += `&state=${encodeURIComponent(extraFilters.state)}`;
@@ -1814,24 +1900,31 @@ HTML_TEMPLATE = """
 
                 document.getElementById('drillDownCount').textContent = data.count;
                 const tbody = document.getElementById('modalTableBody');
-                tbody.innerHTML = '';
-
+                
+                // Construct HTML string for massive performance boost instead of calling appendChild 11,000 times
+                let tableHTML = '';
+                const isLargeDataset = data.cases.length > 500;
+                
                 data.cases.forEach((row, index) => {
-                    const tr = document.createElement('tr');
-                    tr.style.animationDelay = `${index * 0.02}s`;
-                    tr.classList.add('fade-in');
-                    tr.innerHTML = `
-                        <td class="mono">${row.pan}</td>
-                        <td class="mono">${row.old_los}</td>
-                        <td>${getStatusBadge(row.old_status)}</td>
-                        <td class="mono">${row.new_los}</td>
-                        <td>${getStatusBadge(row.new_status)}</td>
-                        <td>${row.industry || '—'}</td>
-                        <td style="color: #da1e28; font-weight: 600;">${row.info || '—'}</td>
-                        <td><button class="compare-btn" onclick="closeDrillDown(); loadComparison(${row.old_los}, ${row.new_los})">Compare</button></td>
+                    // Disable CSS animation delay for massive datasets to prevent layout thrashing
+                    const animationStyle = isLargeDataset ? '' : `style="animation-delay: ${index * 0.02}s"`;
+                    const animationClass = isLargeDataset ? '' : 'class="fade-in"';
+                    
+                    tableHTML += `
+                        <tr ${animationClass} ${animationStyle}>
+                            <td class="mono">${row.pan}</td>
+                            <td class="mono">${row.old_los}</td>
+                            <td>${getStatusBadge(row.old_status)}</td>
+                            <td class="mono">${row.new_los}</td>
+                            <td>${getStatusBadge(row.new_status)}</td>
+                            <td>${row.industry || '—'}</td>
+                            <td style="color: #da1e28; font-weight: 600;">${row.info || '—'}</td>
+                            <td><button class="compare-btn" onclick="closeDrillDown(); loadComparison(${row.old_los}, ${row.new_los})">Compare</button></td>
+                        </tr>
                     `;
-                    tbody.appendChild(tr);
                 });
+                
+                tbody.innerHTML = tableHTML;
 
                 content.style.display = 'block';
                 loading.style.display = 'none';
@@ -1878,6 +1971,13 @@ HTML_TEMPLATE = """
                 { id: 'deviation_count_1', label: '1 Deviation' },
                 { id: 'deviation_count_2', label: '2 Deviations' },
                 { id: 'deviation_count_3plus', label: '3+ Deviations' },
+                { id: 'posidex_good', label: 'Posidex: Good Match' },
+                { id: 'posidex_bad', label: 'Posidex: Bad Match' },
+                { id: 'posidex_no', label: 'Posidex: No Match' },
+                { id: 'posidex_enquiry', label: 'Posidex: Enquiry' },
+                { id: 'udyam_lt_50', label: 'Udyam Name Match < 50%' },
+                { id: 'gst_lt_50', label: 'GSTN Name Match < 50%' },
+                { id: 'bank_lt_50', label: 'Bank Name Match < 50%' },
             ];
             container.innerHTML = metrics.map(m => `
                 <label class="multi-select-item">
@@ -1908,6 +2008,13 @@ HTML_TEMPLATE = """
             document.getElementById('portfolioOldStatusFilter').value = '';
             document.getElementById('portfolioStatusFilter').value = '';
             document.getElementById('portfolioProgramFilter').value = '';
+            document.getElementById('portfolioPosidexFilter').value = '';
+            document.getElementById('gstMatchMin').value = '';
+            document.getElementById('gstMatchMax').value = '';
+            document.getElementById('bankMatchMin').value = '';
+            document.getElementById('bankMatchMax').value = '';
+            document.getElementById('udyamMatchMin').value = '';
+            document.getElementById('udyamMatchMax').value = '';
             // Uncheck all multi-select checkboxes
             document.querySelectorAll('#multiSelectItems input[type="checkbox"]').forEach(cb => cb.checked = false);
             document.getElementById('multiSelectLabel').textContent = 'Select Parameters...';
@@ -1935,10 +2042,8 @@ HTML_TEMPLATE = """
             document.getElementById('multiSelectDropdown').classList.remove('open');
             document.getElementById('multiSelectBtn').classList.remove('open');
 
-            const oldStatus = document.getElementById('portfolioOldStatusFilter').value;
-            const status = document.getElementById('portfolioStatusFilter').value;
-            const program = document.getElementById('portfolioProgramFilter').value;
-            const url = `/api/multi-param-filter?params=${encodeURIComponent(selected.join(','))}&old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}`;
+            const filterParams = getFilterParams();
+            const url = `/api/multi-param-filter?params=${encodeURIComponent(selected.join(','))}&${filterParams}`;
 
             try {
                 const response = await fetch(url);
@@ -1960,7 +2065,14 @@ HTML_TEMPLATE = """
                     'sales_dropped': 'Sales Dropped', 'usl_increase_30pct': 'USL Increase \u226530%',
                     'turnover_not_increased': 'Turnover Not Increased', 'bto_gt_150pct': 'BTO > 150%',
                     'deviation_count_1': '1 Deviation', 'deviation_count_2': '2 Deviations',
-                    'deviation_count_3plus': '3+ Deviations'
+                    'deviation_count_3plus': '3+ Deviations',
+                    'posidex_good': 'Posidex: Good Match',
+                    'posidex_bad': 'Posidex: Bad Match',
+                    'posidex_no': 'Posidex: No Match',
+                    'posidex_enquiry': 'Posidex: Enquiry',
+                    'udyam_lt_50': 'Udyam Name Match < 50%',
+                    'gst_lt_50': 'GSTN Name Match < 50%',
+                    'bank_lt_50': 'Bank Name Match < 50%'
                 };
                 const tags = selected.map(p => `<span class="param-tag">${paramLabels[p] || p}</span>`).join(' ');
                 document.getElementById('combinedParams').innerHTML = '<strong>Selected:</strong> ' + tags;
@@ -2027,6 +2139,20 @@ HTML_TEMPLATE = """
             });
 
             content.style.display = 'block';
+        }
+        function getFilterParams() {
+            const oldStatus = document.getElementById('portfolioOldStatusFilter')?.value || '';
+            const status = document.getElementById('portfolioStatusFilter')?.value || '';
+            const program = document.getElementById('portfolioProgramFilter')?.value || '';
+            const posidex = document.getElementById('portfolioPosidexFilter')?.value || '';
+            const gstMin = document.getElementById('gstMatchMin')?.value || '';
+            const gstMax = document.getElementById('gstMatchMax')?.value || '';
+            const bankMin = document.getElementById('bankMatchMin')?.value || '';
+            const bankMax = document.getElementById('bankMatchMax')?.value || '';
+            const udyamMin = document.getElementById('udyamMatchMin')?.value || '';
+            const udyamMax = document.getElementById('udyamMatchMax')?.value || '';
+            
+            return `old_status=${encodeURIComponent(oldStatus)}&status=${encodeURIComponent(status)}&program=${encodeURIComponent(program)}&posidex=${encodeURIComponent(posidex)}&gst_min=${gstMin}&gst_max=${gstMax}&bank_min=${bankMin}&bank_max=${bankMax}&udyam_min=${udyamMin}&udyam_max=${udyamMax}`;
         }
     </script>
 </body>
