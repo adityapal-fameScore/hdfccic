@@ -1071,9 +1071,12 @@ HTML_TEMPLATE = """
             <img src="https://famescore.in/assets/images/fameImages/fameScoreLogo.png" alt="Fame Score Logo" class="header-logo">
             <h1>Fame Health Dashboard</h1>
         </div>
-        <div class="cache-info">
-            <span class="cache-badge">⚡ CACHED</span>
-            <span>Instant load enabled</span>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <a href="/guide" target="_blank" class="btn" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; background: #393939;">📖 View Guide</a>
+            <div class="cache-info">
+                <span class="cache-badge">⚡ CACHED</span>
+                <span>Instant load enabled</span>
+            </div>
         </div>
     </div>
 
@@ -2162,6 +2165,15 @@ HTML_TEMPLATE = """
 @app.route('/')
 def index():
     return HTML_TEMPLATE
+
+@app.route('/guide')
+def guide_view():
+    """Serves the Product Guide."""
+    try:
+        with open('guide.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        return f"Guide file not found. {e}", 404
 
 # Load pre-computed data (loads once at startup)
 load_precomputed_data()

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Guide — LOS Comparison Dashboard</title>
+    <style>
+        :root {
+            --primary: #0f62fe;
+            --primary-hover: #0353e9;
+            --background: #f4f4f4;
+            --surface: #ffffff;
+            --text-primary: #161616;
+            --text-secondary: #525252;
+            --border: #e0e0e0;
+            --critical: #da1e28;
+            --warning: #f1c21b;
+            --success: #198038;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        header {
+            background-color: var(--surface);
+            padding: 2rem;
+            border-bottom: 2px solid var(--border);
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        header h1 {
+            margin: 0 0 0.5rem 0;
+            font-size: 2.5rem;
+            color: var(--primary);
+        }
+
+        header p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 3rem auto;
+            padding: 0 2rem;
+        }
+
+        .section-card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-bottom: 2.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        h2 {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--primary);
+            margin-top: 0;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 0.75rem;
+            font-size: 1.8rem;
+        }
+
+        h3 {
+            color: #333;
+            margin-top: 2rem;
+            font-size: 1.3rem;
+        }
+
+        p {
+            margin-bottom: 1.5rem;
+            font-size: 1.05rem;
+        }
+
+        ul,
+        ol {
+            margin-bottom: 1.5rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.75rem;
+            font-size: 1.05rem;
+        }
+
+        .highlight-box {
+            background-color: #fdf5f5;
+            border-left: 4px solid var(--critical);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .highlight-box.info {
+            background-color: #f0f8ff;
+            border-left-color: var(--primary);
+        }
+
+        strong {
+            color: #111;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: white;
+            margin-right: 0.5rem;
+        }
+
+        .badge.critical {
+            background-color: var(--critical);
+        }
+
+        .badge.warning {
+            background-color: var(--warning);
+            color: #333;
+        }
+
+        .badge.success {
+            background-color: var(--success);
+        }
+
+        code {
+            background-color: #f0f0f0;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #d11559;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: white;
+            background-color: var(--primary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .nav-links a:hover {
+            background-color: var(--primary-hover);
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>LOS Comparison & LRM Dashboard</h1>
+        <p>Comprehensive Product Guide</p>
+        <div class="nav-links">
+            <a href="/">Go to Dashboard</a>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- SECTION 1: OVERVIEW -->
+        <div class="section-card">
+            <h2>🌍 1. Product Overview — What are we doing?</h2>
+            <p>
+                The <strong>LOS (Loan Origination System) Comparison & LRM (Loan Review Mechanism) Dashboard</strong> is
+                a high-performance web analytics tool designed to help risk teams, credit analysts, and auditors track
+                the health, accuracy, and degradation of loan portfolios.
+            </p>
+            <p>
+                Over time, a borrower's financial profile changes. They might have a drop in CIBIL score, defaulting
+                behavior, shrinking business turnover, or data mismatch triggers. This dashboard takes a massive dataset
+                containing <strong>Old Loan Configurations</strong> (Parent LOS) and compares it side-by-side with
+                <strong>New Loan Configurations</strong> (Child LOS) for the same applicant (PAN).
+            </p>
+            <div class="highlight-box info">
+                <strong>Core Objective:</strong> Identify risks rapidly. Instead of manually cross-checking reports, the
+                dashboard automatically highlights critical deviations—like CIBIL drops ≥50, new Willful Defaults, or
+                discrepancies in Name Matching configurations—across tens of thousands of records instantly.
+            </div>
+        </div>
+
+        <!-- SECTION 2: THE DASHBOARD UI -->
+        <div class="section-card">
+            <h2>🎯 2. How to Use the Dashboard UI</h2>
+            <p>
+                The interface is divided into two main tabs: <strong>PAN Search & Comparison</strong> and
+                <strong>Portfolio Analysis</strong>. You can switch between these at the top left of the screen.
+            </p>
+
+            <h3>A. PAN Search & Comparison Tab</h3>
+            <p>Used for micro-level analysis of individual borrowers.</p>
+            <ul>
+                <li><strong>Search Bar:</strong> Type in a PAN strictly (e.g., <code>ABCD1234E</code>) or an LOS ID to
+                    instantly filter the table.</li>
+                <li><strong>Data Table:</strong> Displays the PAN, Old LOS ID, New LOS ID, Industries, Statuses, and a
+                    quick "Data Changed?" indicator. Click <strong>"Compare"</strong> on any row to open the
+                    Side-by-Side view.</li>
+                <li><strong>Side-by-Side Comparison:</strong> When opened, it places the Old LOS data directly next to
+                    the New LOS data. Fields that have degraded or changed significantly are highlighted in red
+                    (Critical) or yellow (Warning).</li>
+            </ul>
+
+            <h3>B. Portfolio Analysis Tab (Macro Analytics)</h3>
+            <p>This is where the power of the LRM Engine shines. It provides a macro-level view of the entire
+                portfolio's health.</p>
+            <ul>
+                <li><strong>Filter Panel (Right Side):</strong> You can filter the entire 11,000+ case portfolio by:
+                    <ul>
+                        <li>Old Status & Child Status (e.g., Show me cases where the New Child Loan is "Approved").</li>
+                        <li>Programs, Industries, & States.</li>
+                        <li><strong>Name Match %:</strong> Set Minimum and Maximum threshold parameters (e.g., GST Name
+                            Match between 0% and 50%) to find potentially fraudulent or poorly mapped cases.</li>
+                    </ul>
+                </li>
+                <li><strong>Instant Loading (⚡):</strong> Powered by a background precomputed cache engine, selecting
+                    filters will update every metric instantly without refreshing the page.</li>
+            </ul>
+        </div>
+
+        <!-- SECTION 3: KEY METRICS & WHAT THEY MEAN -->
+        <div class="section-card">
+            <h2>📊 3. Understanding the KPIs (Key Performance Indicators)</h2>
+            <p>The Portfolio Analysis tab provides a grid of metric cards. Clicking any card <strong>Drills
+                    Down</strong> into a detailed list of cases. Here is what they track:</p>
+
+            <div class="highlight-box">
+                <strong><span class="badge critical">Critical Risk Rules</span></strong> These represent severe
+                degradation or rule breaches.
+                <ul>
+                    <li><strong>CIBIL Drop ≥50:</strong> The applicant's CIBIL score dropped by 50 points or more
+                        between the Old and New LOS.</li>
+                    <li><strong>CIBIL <700 (Child):</strong> The newest (child) loan application has a CIBIL score below
+                                the strict 700 threshold.</li>
+                    <li><strong>Willful Default:</strong> Indicates the applicant has triggered a Willful Default flag
+                        on their Commercial or Consumer bureau reports.</li>
+                    <li><strong>Turnover Decreased:</strong> Overall business turnover is lower now than it was during
+                        the previous loan cycle.</li>
+                    <li><strong>Name Match < 50% (GST, Bank, Udyam):</strong> The automated system algorithm found that
+                                the name registered on GST/Bank/Udyam matches the applicant's real name by less than
+                                50%. (High risk for impersonation).</li>
+                </ul>
+            </div>
+
+            <div class="highlight-box" style="border-left-color: var(--warning); background-color: #fff9e6;">
+                <strong><span class="badge warning">Warning/Deviation Rules</span></strong> These require auditor
+                attention but may be conditionally acceptable.
+                <ul>
+                    <li><strong>DPD 15+ & DPD 30+:</strong> Tracks "Days Past Due". If a child records DPD history > 15
+                        days or 30 days, they have recent delinquency.</li>
+                    <li><strong>Sales Dropped / Purchase > Sales:</strong> Financial inconsistencies. GSTN data
+                        indicates purchases are abnormally higher than sales, or sales dropped by 10%+.</li>
+                    <li><strong>BTO > 150%:</strong> Banking Turnover (BTO) is exceeding 150% of the Average Turnover,
+                        indicating extreme/suspicious banking velocity.</li>
+                </ul>
+            </div>
+
+            <p>
+                <strong>Multi-Select AND Filter:</strong> At the top of the Portfolio Analysis tab, you can select
+                multiple parameters (e.g., <code>Total Cases</code> + <code>CIBIL Drop ≥50</code> +
+                <code>Turnover Decreased</code>). The dashboard will calculate the intersecting cases that breach
+                <strong>ALL</strong> selected filters simultaneously, letting you find the riskiest subset immediately.
+            </p>
+        </div>
+
+        <!-- SECTION 4: DRILL-DOWN FEATURE -->
+        <div class="section-card">
+            <h2>🔍 4. The Drill-Down Engine</h2>
+            <p>
+                When you click on a metric card (e.g., "198 cases of Turnover Decreased"), a modal will open. This is
+                the Drill-Down Engine:
+            </p>
+            <ul>
+                <li>It instantly shows the exact subset of PANs triggering that specific rule.</li>
+                <li>It displays the <strong>Exact Value Drop</strong> (e.g., <code>800->710</code>) so you know exactly
+                    why the rule was triggered without opening the full comparison.</li>
+                <li>You can click <strong>"Compare"</strong> from this list to instantly jump into the side-by-side view
+                    to investigate the discrepancies directly.</li>
+            </ul>
+        </div>
+
+        <!-- SECTION 5: TECHNICAL WORKFLOW -->
+        <div class="section-card">
+            <h2>⚙️ 5. Technical Context (How it works fast)</h2>
+            <p>
+                If you look at the backend, you'll see a script called <code>precompute.py</code> and an engine called
+                <code>sCRYPT2.py</code>.
+            </p>
+            <ol>
+                <li><strong>Pre-computation:</strong> The system takes massively heavy CSV and Excel data, processes it,
+                    and bakes it into optimized JSON caches.</li>
+                <li><strong>Live Calculations:</strong> Instead of looping through tens of thousands of fields on every
+                    click, the server calculates differences (<code>Live Metrics Calculation</code>) via a single-pass
+                    extraction engine. </li>
+                <li><strong>DOM Optimization:</strong> When you open a drill-down containing 11,000 records, the
+                    front-end uses bulk string HTML generation ensuring zero browser freeze.</li>
+            </ol>
+            <p>Ultimately, this ensures analysts spend their time <strong>underwriting and auditing</strong>, rather
+                than staring at loading screens or matching Excel sheets manually.</p>
+        </div>
+
+    </div>
+
+</body>
+
+</html>
